@@ -1,0 +1,17 @@
+# Servicio systemd para ejecutar el bot sin Docker (alternativa ligera).
+# Instalación: ver docs/DEPLOY.md → "Opción B: sin Docker".
+[Unit]
+Description=second-brain: bot de captura de Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=secondbrain
+WorkingDirectory=/opt/second_brain
+ExecStart=/opt/second_brain/.venv/bin/second-brain run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

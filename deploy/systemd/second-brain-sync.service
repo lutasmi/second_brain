@@ -1,0 +1,8 @@
+# Espejo de la biblioteca a Google Drive (se dispara con el .timer).
+[Unit]
+Description=second-brain: espejo de la biblioteca en Google Drive
+
+[Service]
+Type=oneshot
+User=secondbrain
+ExecStart=/usr/bin/rclone copy /opt/second_brain/library gdrive:second_brain/library --exclude '.index/**' --exclude '.DS_Store' --exclude '._*' --log-level NOTICE

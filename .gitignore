@@ -1,0 +1,15 @@
+# Entorno y artefactos de Python
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+
+# Secretos
+.env
+rclone/
+
+# La biblioteca es tu dato personal. Se ignora por defecto para no mezclarla
+# con el código; elimina esta línea si prefieres versionarla en este repo.
+library/

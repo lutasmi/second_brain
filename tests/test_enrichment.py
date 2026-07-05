@@ -1,0 +1,217 @@
+from dataclasses import replace
+from datetime import datetime
+
+import second_brain.enrich.enricher as enricher
+import second_brain.enrich.knowledge_model as km
+from second_brain.models import Capture
+from second_brain.pipeline import Pipeline
+from second_brain.storage import markdown
+
+
+def _now():
+    return datetime(2026, 7, 5, 10, 0, 0).astimezone()
+
+
+def _fake_enrichment(**overrides):
+    base = {
+        "categories": ["ia"],
+        "summary": "Resumen de prueba.",
+        "entities": {"people": ["Ada Lovelace"]},
+        "keywords": ["algoritmos"],
+        "language": "es",
+        "confidence": 0.9,
+        "provider": "openai",
+        "model": "gpt-5-mini",
+        "enriched_at": "2026-07-05T10:00:00+02:00",
+        "knowledge_model": "deadbeef",
+    }
+    base.update(overrides)
+    return base
+
+
+# --------------------------------------------------------------------- #
+# Modelo de conocimiento                                                 #
+# --------------------------------------------------------------------- #
+def test_knowledge_model_created_and_parsed(tmp_path):
+    model = km.ensure_model(tmp_path)
+    assert "ia" in model.slugs
+    assert km.model_path(tmp_path).exists()
+    # las categorías llevan descripción que guía al clasificador
+    assert any(desc for _, desc in model.categories)
+
+
+def test_knowledge_model_hash_changes_on_edit(tmp_path):
+    before = km.ensure_model(tmp_path)
+    path = km.model_path(tmp_path)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "- jardineria — huertos y plantas\n",
+        encoding="utf-8",
+    )
+    after = km.ensure_model(tmp_path)
+    assert "jardineria" in after.slugs
+    assert before.hash != after.hash
+
+
+def test_knowledge_model_without_categories_fails(tmp_path):
+    km.model_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    km.model_path(tmp_path).write_text("# vacío\n", encoding="utf-8")
+    try:
+        km.ensure_model(tmp_path)
+        assert False, "debería fallar sin categorías"
+    except ValueError:
+        pass
+
+
+def test_enricher_validates_against_official_categories(config, tmp_path, monkeypatch):
+    model = km.ensure_model(tmp_path)
+
+    def fake_classify(prompt, schema, cfg):
+        return {
+            "categories": ["ia", "inventada", "SALUD"],  # inventada se descarta
+            "summary": "  Un resumen.  ",
+            "entities": {"people": [" Marie Curie ", "marie curie", ""]},
+            "concepts": [],
+            "keywords": ["Radio", "física"],
+            "related_topics": ["premios nobel"],
+            "language": "ES",
+            "confidence": 1.7,  # se recorta a 1.0
+        }
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    import second_brain.ai as ai
+
+    monkeypatch.setattr(ai, "classify_json", fake_classify)
+    result = enricher.enrich("Título", "Cuerpo", model, config)
+
+    assert result["categories"] == ["ia", "salud"]
+    assert result["summary"] == "Un resumen."
+    assert result["entities"]["people"] == ["Marie Curie"]  # dedup + limpieza
+    assert "concepts" not in result  # las listas vacías no ensucian la nota
+    assert result["confidence"] == 1.0
+    assert result["language"] == "es"
+    assert result["knowledge_model"] == model.hash
+    assert result["provider"] == "openai"
+
+
+# --------------------------------------------------------------------- #
+# Pipeline: captura con enriquecimiento                                  #
+# --------------------------------------------------------------------- #
+def test_capture_gets_enrichment_and_tags(config, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        enricher,
+        "enrich",
+        lambda title, body, model, cfg: _fake_enrichment(categories=["ia", "ciencia"]),
+    )
+    pipeline = Pipeline(replace(config, ai_enrich=True))
+    outcome = pipeline.process(
+        Capture(kind="text", source="cli", captured_at=_now(), text="Nota sobre IA #ml")
+    )
+    assert outcome.status == "complete"
+    frontmatter, _ = markdown.parse_note(outcome.path)
+    assert frontmatter["tags"] == ["ciencia", "ia", "ml"]  # categorías + hashtag
+    assert frontmatter["enrichment"]["summary"] == "Resumen de prueba."
+
+
+def test_enrichment_failure_never_blocks_capture(config, monkeypatch):
+    def boom(title, body, model, cfg):
+        raise RuntimeError("api caída")
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(enricher, "enrich", boom)
+    pipeline = Pipeline(replace(config, ai_enrich=True))
+    outcome = pipeline.process(
+        Capture(kind="text", source="cli", captured_at=_now(), text="no me pierdas")
+    )
+    # la captura queda completa; el enriquecimiento se reintenta con `enrich`
+    assert outcome.status == "complete"
+    frontmatter, body = markdown.parse_note(outcome.path)
+    assert "api caída" in frontmatter["enrichment_error"]
+    assert "no me pierdas" in body
+
+
+def test_no_key_skips_enrichment_silently(config, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    pipeline = Pipeline(replace(config, ai_enrich=True))
+    outcome = pipeline.process(
+        Capture(kind="text", source="cli", captured_at=_now(), text="sin clave")
+    )
+    frontmatter, _ = markdown.parse_note(outcome.path)
+    assert outcome.status == "complete"
+    assert "enrichment" not in frontmatter
+    assert "enrichment_error" not in frontmatter
+
+
+# --------------------------------------------------------------------- #
+# enrich_library: regeneración sin tocar el contenido                    #
+# --------------------------------------------------------------------- #
+def test_enrich_library_preserves_original_content(config, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    pipeline = Pipeline(replace(config, ai_enrich=True))
+    outcome = pipeline.process(
+        Capture(
+            kind="text",
+            source="cli",
+            captured_at=_now(),
+            text="Idea original\n\nCon un segundo párrafo que no debe cambiar.",
+        )
+    )
+    body_before = markdown.parse_note(outcome.path)[1]
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        enricher, "enrich", lambda t, b, m, c: _fake_enrichment(categories=["idea-propia"])
+    )
+    results = pipeline.enrich_library()
+    assert [s for _, s in results] == ["enriched"]
+
+    frontmatter, body_after = markdown.parse_note(outcome.path)
+    assert body_after == body_before  # inmutabilidad del contenido original
+    assert frontmatter["enrichment"]["categories"] == ["idea-propia"]
+    assert frontmatter["tags"] == ["idea-propia"]
+
+
+def test_enrich_library_only_reprocesses_stale_notes(config, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    model = km.ensure_model(config.library_dir)
+    monkeypatch.setattr(
+        enricher,
+        "enrich",
+        lambda t, b, m, c: _fake_enrichment(knowledge_model=m.hash),
+    )
+    pipeline = Pipeline(replace(config, ai_enrich=True))
+    pipeline.process(
+        Capture(kind="text", source="cli", captured_at=_now(), text="nota al día")
+    )
+
+    # nada obsoleto → no hay trabajo
+    assert pipeline.enrich_library() == []
+    # editar el knowledge model deja la nota obsoleta → se re-enriquece
+    path = km.model_path(config.library_dir)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "- nueva-categoria — algo\n",
+        encoding="utf-8",
+    )
+    results = pipeline.enrich_library()
+    assert [s for _, s in results] == ["enriched"]
+    # --all fuerza aunque esté al día
+    assert [s for _, s in pipeline.enrich_library(force=True)] == ["enriched"]
+
+
+def test_enrich_library_without_key_raises(config):
+    import os
+
+    env_backup = {
+        k: os.environ.pop(k, None) for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+    }
+    try:
+        Pipeline(config).enrich_library()
+        assert False, "debería fallar sin clave"
+    except RuntimeError:
+        pass
+    finally:
+        for k, v in env_backup.items():
+            if v is not None:
+                os.environ[k] = v

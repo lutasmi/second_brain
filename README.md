@@ -1,151 +1,158 @@
 # second_brain / Biblioteca de Ideas
 
-Visión
+Sistema de captura, almacenamiento y consulta de conocimiento personal
+pensado para perdurar durante décadas.
 
-Biblioteca de Ideas es un sistema de captura, almacenamiento y consulta de conocimiento personal pensado para perdurar durante muchos años.
+No es una aplicación de notas. No es un gestor de favoritos. Es una
+biblioteca documental donde toda la información capturada permanece
+disponible independientemente de la IA, la aplicación o la tecnología
+usada para consultarla.
 
-No pretende ser una aplicación de notas.
+**Los datos son el activo. La aplicación es reemplazable. La IA es
+reemplazable.**
 
-No pretende ser un gestor de favoritos.
+```
+Telegram ──▶ Procesamiento ──▶ Markdown (fuente maestra) ──▶ Índice (opcional)
+```
 
-Su objetivo es construir una biblioteca documental donde toda la información capturada permanezca disponible independientemente de la IA, la aplicación o la tecnología utilizada para consultarla.
+## Qué hace la V1
 
-Los datos son el activo.
+Envías un mensaje al bot de Telegram y aparece automáticamente un fichero
+Markdown en tu biblioteca:
 
-La aplicación es reemplazable.
+- **Texto** → nota literal, íntegra.
+- **URL** → detecta el tipo de enlace (web, X/Twitter, YouTube, LinkedIn) y
+  extrae el contenido: artículo en Markdown, texto del tuit, título y
+  transcripción del vídeo. Si la extracción falla, **la URL se guarda
+  igualmente** y se reintenta después.
+- **Imagen** → guarda el original, aplica OCR (tesseract) y genera una
+  descripción con IA (API de Claude). Todo queda reflejado en el Markdown.
 
-La IA es reemplazable.
+Cada captura se **enriquece automáticamente** con IA: categorías de una
+taxonomía oficial que es un activo del proyecto (`library/knowledge_model.md`,
+editable por ti — el modelo nunca inventa categorías), resumen, entidades
+(personas, organizaciones, tecnologías...), palabras clave, temas
+relacionados y confianza. Todo como metadatos: el contenido original es
+inmutable y el enriquecimiento puede regenerarse entero con `second-brain
+enrich` (cambio de taxonomía, de modelo o de proveedor, sin perder nada).
+Las notas quedan relacionadas por temática y listas para Obsidian (tags
+nativos en el frontmatter → panel de etiquetas y grafo).
 
-Objetivos
+También hay captura directa desde la terminal (`second-brain add`), reintento
+de notas pendientes (`reprocess`) y búsqueda de texto completo (`index` +
+`search`, que cubre también el enriquecimiento) sobre un índice SQLite 100 %
+regenerable desde los Markdown.
 
-* Capturar información con la mínima fricción posible.
-* Conservar el contenido original siempre que sea posible.
-* Almacenar la información en un formato abierto.
-* Permitir la evolución tecnológica sin migraciones complejas.
-* Facilitar consultas futuras mediante búsqueda clásica y búsqueda semántica.
+## Principios innegociables
 
-Principios de arquitectura
+- Los archivos **Markdown son la única fuente de verdad**. Se abren con
+  cualquier editor; Obsidian sirve como visor, nunca como dependencia.
+- Las bases de datos son **solo índices**: puedes borrar `library/.index/`
+  cuando quieras y regenerarlo con `second-brain index`.
+- **Nunca se pierde una captura**: si algo falla, la nota se escribe con lo
+  que haya, queda en estado `pending` y `reprocess` la reintenta.
+- Portable y sin bloqueo de proveedor: Python + ficheros de texto plano.
 
-Fuente de verdad
+## Instalación
 
-La fuente de verdad son archivos Markdown.
+Requisitos: Python 3.11+. Opcional: [tesseract](https://tesseract-ocr.github.io/)
+para OCR de imágenes (`brew install tesseract tesseract-lang` en macOS).
 
-Nunca una base de datos.
+```bash
+git clone <este-repo> && cd second_brain
+./scripts/install.sh
+```
 
-Nunca un servicio externo.
+El script crea `.venv`, instala dependencias y copia `.env.example` a `.env`.
 
-La base de datos únicamente podrá utilizarse como índice o caché.
+## Configuración de Telegram
 
-Debe poder reconstruirse completamente a partir de los Markdown.
+1. Habla con [@BotFather](https://t.me/BotFather) → `/newbot` → copia el token.
+2. Habla con [@userinfobot](https://t.me/userinfobot) para conocer tu id numérico.
+3. Edita `.env`:
 
-Portabilidad
+```dotenv
+TELEGRAM_BOT_TOKEN=123456789:AAF...tu-token
+TELEGRAM_ALLOWED_USER_IDS=11111111        # tu id; sin esto cualquiera podría escribir
+LIBRARY_DIR=library                       # dónde vive tu biblioteca
+# ANTHROPIC_API_KEY=sk-ant-...            # opcional: descripción IA de imágenes
+```
 
-Toda la información debe poder abrirse con cualquier editor de texto.
+## Ejecución
 
-No debe depender de Obsidian, Notion ni de ninguna aplicación concreta.
+```bash
+source .venv/bin/activate
+second-brain run          # arranca el bot (long polling; no necesita servidor)
+```
 
-Obsidian podrá utilizarse como visor, nunca como dependencia tecnológica.
+Envía al bot un texto, una URL o una foto y verás aparecer la nota en
+`library/AAAA/MM/`. El bot responde con la ruta del fichero creado.
 
-Simplicidad
+### Resto de comandos
 
-Siempre debe preferirse la solución más sencilla que cumpla el objetivo.
+```bash
+second-brain add "una idea suelta #tag"        # captura texto desde la terminal
+second-brain add https://ejemplo.com/articulo  # captura una URL
+second-brain add --file foto.png "caption"     # captura una imagen
+second-brain reprocess                         # reintenta notas pendientes
+second-brain enrich                            # re-enriquece lo obsoleto (--all: todo)
+second-brain index                             # (re)construye el índice de búsqueda
+second-brain search jardinería                 # busca en toda la biblioteca
+```
 
-Evitar sobreingeniería.
+## Estructura de la biblioteca
 
-Evitar dependencias innecesarias.
+```
+library/
+├── 2026/
+│   └── 07/
+│       ├── 20260702T153001-a1b2-titulo-de-la-nota.md
+│       └── media/
+│           └── 20260702T153001-a1b2.jpg
+└── .index/notes.db      # índice regenerable; borrable sin pérdida
+```
 
-Evitar frameworks complejos cuando una solución simple sea suficiente.
+El formato de las notas (frontmatter, estados, reintentos) está especificado
+en [docs/FORMAT.md](docs/FORMAT.md). Hay notas reales de ejemplo en
+[examples/](examples/).
 
-MVP
+## Estructura del repositorio
 
-La primera versión únicamente necesita soportar:
+```
+src/second_brain/
+├── sources/          # adaptadores de entrada (telegram; añade aquí los futuros)
+├── pipeline.py       # núcleo: captura → nota Markdown, sin pérdidas
+├── processors/       # un módulo por tipo: text, image, url/{web,twitter,youtube,linkedin}
+├── storage/          # formato Markdown + estructura física de la biblioteca
+├── index/            # índice SQLite FTS5 opcional y regenerable
+└── cli.py            # run · add · reprocess · index · search
+docs/                 # FORMAT.md (formato estable) · ARCHITECTURE.md (decisiones)
+examples/             # notas reales generadas por el sistema
+tests/                # pytest, sin dependencias de red
+```
 
-* Texto
-* URLs
+La arquitectura, los puntos de extensión (nuevas fuentes, nuevos tipos,
+nuevos extractores) y las decisiones técnicas están documentados en
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Flujo esperado:
+## Despliegue en la nube (24/7, sin ordenador encendido)
 
-Telegram
+El bot puede correr en cualquier servidor Linux pequeño con Docker, con la
+biblioteca replicada automáticamente en Google Drive (espejo `rclone` cada
+5 minutos): guía completa en [docs/DEPLOY.md](docs/DEPLOY.md).
 
-↓
+## Tests
 
-Procesamiento
+```bash
+./.venv/bin/pytest
+```
 
-↓
+## Evolución prevista
 
-Markdown
+- **Fase 3**: PDFs, audio (transcripción), más extractores de URL.
+- **Fase 4**: embeddings, búsqueda semántica y chat sobre la biblioteca —
+  todo derivable de los Markdown, sin migraciones.
 
-Todavía no son prioritarios:
-
-* OCR
-* Audio
-* Vídeo
-* Embeddings
-* RAG
-* Agentes IA
-
-Arquitectura objetivo
-
-Captura
-
-↓
-
-Procesamiento
-
-↓
-
-Markdown (fuente maestra)
-
-↓
-
-Índice
-
-↓
-
-Búsqueda
-
-↓
-
-IA
-
-Evolución prevista
-
-Fase 1
-
-* Telegram
-* Texto
-* URLs
-* Markdown
-
-Fase 2
-
-* Extracción de contenido de páginas web
-* Twitter/X
-* YouTube
-* LinkedIn
-
-Fase 3
-
-* PDFs
-* Imágenes
-* OCR
-* Audio
-* Transcripción
-
-Fase 4
-
-* Índice
-* Embeddings
-* Búsqueda semántica
-* Chat sobre la biblioteca
-
-Filosofía de desarrollo
-
-Antes de añadir nuevas funcionalidades, debe garantizarse que:
-
-* La captura funciona.
-* Los Markdown son correctos.
-* La información nunca se pierde.
-* El sistema puede ejecutarse de extremo a extremo.
-
-La prioridad siempre será disponer de un producto funcional antes que de una arquitectura perfecta.
+Antes de añadir funcionalidades: la captura funciona, los Markdown son
+correctos, la información nunca se pierde y el sistema corre de extremo a
+extremo.
