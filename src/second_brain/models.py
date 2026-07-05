@@ -18,10 +18,11 @@ class Capture:
     kind: str  # "text" | "url" | "image"
     source: str  # "telegram" | "cli" | ...
     captured_at: datetime
-    text: str | None = None  # texto del mensaje o caption de la imagen
+    text: str | None = None  # texto del mensaje o caption del adjunto
     url: str | None = None  # solo kind == "url"
-    file_bytes: bytes | None = None  # solo kind == "image"
+    file_bytes: bytes | None = None  # kinds con adjunto (image/audio/pdf/file)
     file_name: str | None = None
+    mime_type: str | None = None
     metadata: dict = field(default_factory=dict)  # datos propios de la fuente
 
 

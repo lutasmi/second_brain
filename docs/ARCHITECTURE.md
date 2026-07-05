@@ -23,7 +23,8 @@ Markdown (library/AAAA/MM/*.md)      FUENTE DE VERDAD
 | `pipeline.py`             | Núcleo: adjuntos → procesador → nota Markdown. Garantiza no perder nada. |
 | `processors/`             | Un módulo por tipo de contenido (`text`, `url`, `image`).             |
 | `processors/url/`         | Un extractor por tipo de enlace (`web`, `twitter`, `youtube`, `linkedin`). |
-| `enrich/`                 | Enriquecimiento IA: `knowledge_model.py` (taxonomía oficial como activo) + `enricher.py` (categorías, resumen, entidades...). |
+| `enrich/`                 | Enriquecimiento IA: `knowledge_model.py` (taxonomía oficial como activo) + `enricher.py` (categorías, resumen, entidades...) + `relations.py` (wikilinks por etiquetas compartidas). |
+| `report.py`               | Parte de estado: salud de biblioteca y espejo (para /estado y el parte diario). |
 | `ai.py`                   | Capa de proveedor de IA (OpenAI/Anthropic), conmutable por `.env`.    |
 | `storage/`                | Formato Markdown + estructura física de la biblioteca.                |
 | `index/`                  | Índice SQLite FTS5, 100 % regenerable desde los Markdown.             |

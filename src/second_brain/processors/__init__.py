@@ -5,12 +5,15 @@ Cada tipo de entrada es un módulo independiente. Para añadir un tipo nuevo
 y regístralo en PROCESSORS. El resto del sistema no cambia.
 """
 
-from second_brain.processors import image, text, url
+from second_brain.processors import audio, file, image, pdf, text, url
 
 PROCESSORS = {
     "text": text.process,
     "url": url.process,
     "image": image.process,
+    "audio": audio.process,
+    "pdf": pdf.process,
+    "file": file.process,
 }
 
 

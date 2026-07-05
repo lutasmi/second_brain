@@ -78,6 +78,23 @@ def classify_json(prompt: str, schema: dict, config) -> dict:
     return json.loads(next(b.text for b in response.content if b.type == "text"))
 
 
+def transcribe_audio(path: Path, config) -> str:
+    """Transcribe un audio con la API de OpenAI (Anthropic no ofrece audio)."""
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("la transcripción de audio requiere OPENAI_API_KEY")
+    from openai import OpenAI
+
+    with open(path, "rb") as handle:
+        result = OpenAI().audio.transcriptions.create(
+            model=os.getenv("TRANSCRIBE_MODEL", "whisper-1"),
+            file=handle,
+        )
+    text = (result.text or "").strip()
+    if not text:
+        raise RuntimeError("transcripción vacía")
+    return text
+
+
 def describe_image(path: Path, prompt: str, config) -> str:
     """Descripción de una imagen local con el proveedor activo."""
     prov = provider(config)

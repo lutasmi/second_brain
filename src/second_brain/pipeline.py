@@ -31,11 +31,14 @@ def _hashtags(text: str | None) -> list[str]:
     return sorted({t.lower() for t in _HASHTAG_RE.findall(text)})
 
 
+_ATTACHMENT_KINDS = {"image", "audio", "pdf", "file"}
+
+
 def _slug_source(capture: Capture) -> str:
     if capture.kind == "url" and capture.url:
         return urlparse(capture.url).hostname or "enlace"
-    if capture.kind == "image":
-        return capture.text or capture.file_name or "imagen"
+    if capture.kind in _ATTACHMENT_KINDS:
+        return capture.text or capture.file_name or capture.kind
     return capture.text or "nota"
 
 
@@ -75,10 +78,21 @@ class Pipeline:
         result = self._run_processor(capture, ctx)
         self._apply_enrichment(result)
         frontmatter = self._frontmatter(note_id, capture, ctx, result)
+        self._apply_relations(frontmatter, path)
         markdown.write_note(
             path, markdown.render_note(frontmatter, result.title, result.body)
         )
+        self._update_index(path)
         return ProcessOutcome(path=path, status=result.status, title=result.title)
+
+    def find_duplicate_url(self, url: str) -> dict | None:
+        """Nota ya existente con esa URL (vía índice), o None."""
+        try:
+            from second_brain.index import sqlite_index
+
+            return sqlite_index.find_by_url(self.config.library_dir, url)
+        except Exception:  # noqa: BLE001 — la deduplicación es prescindible
+            return None
 
     # ------------------------------------------------------------------ #
     # Reintento / re-enriquecimiento                                      #
@@ -108,13 +122,23 @@ class Pipeline:
             ctx.attachment_abs = path.parent / attachments[0]
 
         result = self._run_processor(capture, ctx)
+
+        # Nunca degradar: si la nota ya estaba completa y el reintento de
+        # extracción falla (p. ej. la web murió), se conserva la nota buena.
+        if frontmatter.get("status") == "complete" and result.status == "pending":
+            return ProcessOutcome(
+                path=path, status="complete", title=str(frontmatter.get("title", ""))
+            )
+
         self._apply_enrichment(result)
         new_frontmatter = self._frontmatter(
             str(frontmatter["id"]), capture, ctx, result
         )
+        self._apply_relations(new_frontmatter, path)
         markdown.write_note(
             path, markdown.render_note(new_frontmatter, result.title, result.body)
         )
+        self._update_index(path)
         return ProcessOutcome(path=path, status=result.status, title=result.title)
 
     # ------------------------------------------------------------------ #
@@ -125,6 +149,33 @@ class Pipeline:
             return get_processor(capture.kind)(capture, ctx)
         except Exception as exc:  # noqa: BLE001 — nunca perder la captura
             return self._fallback_result(capture, ctx, exc)
+
+    def _apply_relations(self, frontmatter: dict, path: Path) -> None:
+        """Enlaza la nota con las que comparten etiquetas (campo `related`)."""
+        try:
+            from second_brain.enrich import relations
+
+            rel = str(path.relative_to(self.config.library_dir))
+            links = relations.related_wikilinks(
+                self.config.library_dir, frontmatter.get("tags") or [], rel
+            )
+        except Exception:  # noqa: BLE001 — sin índice no hay relaciones
+            return
+        schema = frontmatter.pop("schema", SCHEMA_VERSION)
+        if links:
+            frontmatter["related"] = links
+        else:
+            frontmatter.pop("related", None)
+        frontmatter["schema"] = schema
+
+    def _update_index(self, path: Path) -> None:
+        """Mantiene fresco el índice de búsqueda (si existe)."""
+        try:
+            from second_brain.index import sqlite_index
+
+            sqlite_index.upsert(self.config.library_dir, path)
+        except Exception:  # noqa: BLE001 — el índice es desechable
+            pass
 
     def _apply_enrichment(self, result: ProcessResult) -> None:
         """Enriquecimiento IA (solo notas completas). Su fallo nunca bloquea
@@ -194,7 +245,9 @@ class Pipeline:
             except Exception as exc:  # noqa: BLE001
                 frontmatter["enrichment_error"] = str(exc)
                 status = "error"
+            self._apply_relations(frontmatter, path)
             markdown.write_note(path, markdown.render_note(frontmatter, title, content))
+            self._update_index(path)
             outcomes.append((path, status))
         return outcomes
 
@@ -234,8 +287,10 @@ class Pipeline:
             fm["url"] = capture.url
         if ctx.attachment_rel:
             fm["attachments"] = [ctx.attachment_rel]
-        if capture.kind == "image" and capture.text:
+        if capture.kind in _ATTACHMENT_KINDS and capture.text:
             fm["caption"] = capture.text
+        if capture.mime_type:
+            fm["mime_type"] = capture.mime_type
         fm.update(result.extra)
         if capture.metadata:
             fm[capture.source] = capture.metadata
@@ -250,7 +305,7 @@ class Pipeline:
         captured_at = fm["captured_at"]
         if not isinstance(captured_at, datetime):
             captured_at = datetime.fromisoformat(str(captured_at))
-        if kind == "image":
+        if kind in _ATTACHMENT_KINDS:
             text = fm.get("caption")
         elif kind == "text":
             text = _strip_title_heading(body)
@@ -262,5 +317,6 @@ class Pipeline:
             captured_at=captured_at,
             text=text,
             url=fm.get("url"),
+            mime_type=fm.get("mime_type"),
             metadata=fm.get(source) or {},
         )

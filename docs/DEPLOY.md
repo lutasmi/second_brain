@@ -17,6 +17,9 @@ Principios que se conservan:
 - La fuente de verdad son los Markdown del disco del servidor.
 - Google Drive es un **espejo de solo salida** (`rclone copy`, nunca borra):
   copia de seguridad + acceso de lectura desde cualquier dispositivo.
+  **Única excepción**: `knowledge_model.md` es bidireccional — si lo editas
+  en Drive, el servidor adopta tu versión en el siguiente ciclo (≤5 min).
+  El resto de notas NO deben editarse en Drive (el espejo las revertiría).
 - Nada depende del proveedor: el mismo contenedor corre en cualquier VPS,
   y `library/` puede copiarse/moverse cuando quieras.
 

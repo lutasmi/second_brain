@@ -1,8 +1,8 @@
 FROM python:3.11-slim
 
-# tesseract para OCR de imágenes (inglés + español)
+# tesseract para OCR de imágenes (inglés + español) + zonas horarias
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

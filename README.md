@@ -24,9 +24,18 @@ Markdown en tu biblioteca:
 - **URL** → detecta el tipo de enlace (web, X/Twitter, YouTube, LinkedIn) y
   extrae el contenido: artículo en Markdown, texto del tuit, título y
   transcripción del vídeo. Si la extracción falla, **la URL se guarda
-  igualmente** y se reintenta después.
+  igualmente** y se reintenta después. URLs repetidas se detectan y no se
+  duplican.
 - **Imagen** → guarda el original, aplica OCR (tesseract) y genera una
-  descripción con IA (API de Claude). Todo queda reflejado en el Markdown.
+  descripción con IA. Todo queda reflejado en el Markdown.
+- **Nota de voz / audio** → guarda el original y lo transcribe (Whisper).
+- **PDF** → guarda el original y extrae el texto.
+- **Cualquier otro archivo** → se guarda como pendiente: nada se ignora.
+
+El bot es también tu consola: `/buscar` consulta la biblioteca desde el
+móvil, `/estado` muestra la salud del sistema (incluido el espejo en Drive),
+`/reprocess` y `/enrich` reintentan pendientes, y cada noche a las 21:00
+recibes un parte de estado automático.
 
 Cada captura se **enriquece automáticamente** con IA: categorías de una
 taxonomía oficial que es un activo del proyecto (`library/knowledge_model.md`,

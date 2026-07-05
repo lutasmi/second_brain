@@ -33,6 +33,21 @@ def cmd_run(args: argparse.Namespace) -> None:
     run_bot(load_config(args.env))
 
 
+_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+_AUDIO_SUFFIXES = {".oga", ".ogg", ".mp3", ".m4a", ".wav", ".webm", ".flac"}
+
+
+def _kind_for_file(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in _IMAGE_SUFFIXES:
+        return "image"
+    if suffix in _AUDIO_SUFFIXES:
+        return "audio"
+    if suffix == ".pdf":
+        return "pdf"
+    return "file"
+
+
 def cmd_add(args: argparse.Namespace) -> None:
     pipeline = Pipeline(load_config(args.env))
     now = datetime.now().astimezone()
@@ -43,7 +58,7 @@ def cmd_add(args: argparse.Namespace) -> None:
         if not path.is_file():
             raise SystemExit(f"No existe el fichero: {path}")
         capture = Capture(
-            kind="image",
+            kind=_kind_for_file(path),
             source="cli",
             captured_at=now,
             text=text,
@@ -51,13 +66,16 @@ def cmd_add(args: argparse.Namespace) -> None:
             file_name=path.name,
         )
     elif text and is_probable_url(text):
-        capture = Capture(
-            kind="url", source="cli", captured_at=now, url=normalize_url(text)
-        )
+        url = normalize_url(text)
+        duplicate = pipeline.find_duplicate_url(url)
+        if duplicate:
+            print(f"🔁 Ya existe: «{duplicate['title']}»\n   {duplicate['path']}")
+            return
+        capture = Capture(kind="url", source="cli", captured_at=now, url=url)
     elif text:
         capture = Capture(kind="text", source="cli", captured_at=now, text=text)
     else:
-        raise SystemExit("Indica un texto/URL o --file <imagen>")
+        raise SystemExit("Indica un texto/URL o --file <imagen|pdf|audio>")
 
     _print_outcome(pipeline.process(capture))
 

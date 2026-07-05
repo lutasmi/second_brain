@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.1.0 — Nuevas capturas, operación desde Telegram y relaciones (5 de julio de 2026)
+
+### Nuevos tipos de captura
+- **Notas de voz y audio** 🎙: transcripción automática (Whisper/OpenAI);
+  el audio original se conserva junto a la nota.
+- **PDFs** 📄: extracción de texto con pypdf; los escaneados quedan
+  `pending` a la espera de OCR de documentos.
+- **Comodín para cualquier otro archivo** 📎: nada se ignora en silencio —
+  el binario se guarda y la nota queda `pending` hasta que exista soporte.
+
+### El bot como consola de operación
+- `/buscar <términos>` — búsqueda de texto completo desde el móvil
+  (contenido + enriquecimiento).
+- `/estado` — notas totales/hoy, pendientes, errores de enriquecimiento y
+  salud del espejo Drive (marcador `.sync/last_ok`).
+- `/reprocess` y `/enrich` — mantenimiento sin SSH.
+- **Parte diario automático** a las 21:00 (Madrid) por Telegram.
+
+### Relaciones entre notas
+- Campo `related` en el frontmatter con wikilinks `[[nota|Título]]` hacia
+  las notas que comparten más etiquetas → aristas reales en el grafo de
+  Obsidian y backlinks, sin tocar el contenido original.
+
+### Correcciones importantes
+- **`knowledge_model.md` ahora es editable desde Google Drive**: el
+  sincronizador lo recoge si la copia de Drive es más reciente (el resto de
+  la biblioteca sigue siendo espejo de solo salida).
+- **`reprocess` ya no puede degradar notas**: si una nota completa falla al
+  re-extraerse (p. ej. la web murió), se conserva intacta.
+- Deduplicación de URLs: reenviar un enlace ya capturado avisa en lugar de
+  duplicar la nota.
+- Índice de búsqueda siempre fresco (actualización incremental tras cada
+  escritura + reconstrucción al arrancar el bot).
+- Hora local Europe/Madrid en las capturas (antes UTC).
+- El espejo excluye `*.tmp` (ventana de escritura atómica) y `.sync/`.
+
 ## v1.0.0 — Primera versión funcional completa (5 de julio de 2026)
 
 Primera release del **segundo cerebro**: una biblioteca documental personal

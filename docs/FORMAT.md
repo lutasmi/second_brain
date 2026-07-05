@@ -40,7 +40,7 @@ Campos comunes a todas las notas:
 | Campo         | Tipo   | Descripción                                             |
 |---------------|--------|---------------------------------------------------------|
 | `id`          | str    | Identificador único y estable de la nota                |
-| `type`        | str    | `text` \| `url` \| `image` (futuros: `pdf`, `audio`...) |
+| `type`        | str    | `text` \| `url` \| `image` \| `audio` \| `pdf` \| `file` (comodín) |
 | `source`      | str    | Fuente de captura: `telegram`, `cli`, ...               |
 | `captured_at` | str    | ISO 8601 con zona horaria                               |
 | `status`      | str    | `complete` \| `pending` (extracción pendiente)          |
@@ -59,6 +59,8 @@ Campos según tipo:
 | `caption`     | image     | Texto que acompañaba a la imagen                     |
 | `ocr`         | image     | `done` \| `empty` (sin texto legible)                |
 | `description_model` | image | Modelo de IA usado para la descripción            |
+| `related`     | cualquiera| Wikilinks `[[nota\|Título]]` a notas con etiquetas comunes (Obsidian los muestra como enlaces reales en grafo y backlinks) |
+| `mime_type` / `pages` | adjuntos | Tipo MIME del adjunto / páginas del PDF        |
 | `enrichment`  | cualquiera| Bloque de enriquecimiento IA (ver sección propia)    |
 | `enrichment_error` | cualquiera | Motivo del último fallo de enriquecimiento      |
 | `errors`      | cualquiera| Fallos de captura/extracción (solo si hubo alguno)   |

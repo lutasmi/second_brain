@@ -14,24 +14,35 @@ services:
     env_file: .env
     environment:
       LIBRARY_DIR: /data/library
+      TZ: Europe/Madrid
     volumes:
       - ./library:/data/library
 
-  # Espejo unidireccional biblioteca → Google Drive cada 5 minutos.
+  # Espejo biblioteca → Google Drive cada 5 minutos.
   # `rclone copy` nunca borra en remoto: Drive es copia de seguridad y
-  # ventana de lectura (móvil/web); la fuente de verdad sigue siendo /data/library.
+  # ventana de lectura; la fuente de verdad sigue siendo /data/library.
+  # Excepción bidireccional: knowledge_model.md se RECOGE de Drive si allí
+  # es más reciente (el usuario puede editar la taxonomía desde Drive).
+  # Tras cada espejo correcto se actualiza el marcador .sync/last_ok, que
+  # el bot usa para vigilar la salud de la sincronización (/estado).
   sync:
     image: rclone/rclone:latest
     restart: unless-stopped
     volumes:
-      - ./library:/data/library:ro
+      - ./library:/data/library
       - ./rclone:/config/rclone
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         while true; do
-          rclone copy /data/library gdrive:second_brain/library \
-            --exclude '.index/**' --exclude '.DS_Store' --exclude '._*' \
-            --log-level NOTICE
+          rclone copy gdrive:second_brain/library/knowledge_model.md /data/library \
+            --update --log-level ERROR || true
+          if rclone copy /data/library gdrive:second_brain/library \
+              --exclude '.index/**' --exclude '.sync/**' \
+              --exclude '.DS_Store' --exclude '._*' --exclude '*.tmp' \
+              --log-level NOTICE; then
+            mkdir -p /data/library/.sync
+            date -u +%Y-%m-%dT%H:%M:%SZ > /data/library/.sync/last_ok
+          fi
           sleep 300
         done
