@@ -25,10 +25,18 @@ def _enrichment_text(enrichment: dict) -> str:
     """Aplana el bloque de enriquecimiento para indexarlo como texto."""
     parts: list[str] = [
         str(enrichment.get("summary", "")),
-        str(enrichment.get("relevance", "")),
+        # nombres v3 con compatibilidad hacia atrás (v2: relevance/learnings)
+        str(enrichment.get("why_relevant", enrichment.get("relevance", ""))),
         str(enrichment.get("content_type", "")),
     ]
-    for field in ("learnings", "suggested_categories", "concepts", "keywords", "related_topics"):
+    for field in (
+        "key_ideas",
+        "learnings",
+        "suggested_categories",
+        "concepts",
+        "keywords",
+        "related_topics",
+    ):
         parts.extend(enrichment.get(field) or [])
     for values in (enrichment.get("entities") or {}).values():
         parts.extend(values or [])

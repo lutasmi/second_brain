@@ -33,6 +33,22 @@ def _hashtags(text: str | None) -> list[str]:
 
 _ATTACHMENT_KINDS = {"image", "audio", "pdf", "file"}
 
+# Origen real del contenido (content_source), distinto de la vía de captura
+# (source: telegram/cli/...). Determinista y por tanto siempre regenerable.
+_CONTENT_SOURCES = {
+    "text": "nota-personal",
+    "image": "imagen",
+    "audio": "nota-de-voz",
+    "pdf": "documento",
+    "file": "archivo",
+}
+
+
+def _content_source(kind: str, url_type: str | None) -> str:
+    if kind == "url":
+        return url_type or "web"
+    return _CONTENT_SOURCES.get(kind, "desconocido")
+
 
 def _slug_source(capture: Capture) -> str:
     if capture.kind == "url" and capture.url:
@@ -246,6 +262,10 @@ class Pipeline:
 
             title = str(frontmatter.get("title", ""))
             content = _original_content(body)
+            # migración: notas antiguas sin content_source lo reciben aquí
+            frontmatter["content_source"] = _content_source(
+                str(frontmatter.get("type", "text")), frontmatter.get("url_type")
+            )
             try:
                 frontmatter["enrichment"] = enricher.enrich(
                     title, content, model, self.config
@@ -297,7 +317,10 @@ class Pipeline:
         fm: dict = {
             "id": note_id,
             "type": capture.kind,
-            "source": capture.source,
+            "source": capture.source,  # vía de captura (telegram, cli...)
+            "content_source": _content_source(
+                capture.kind, result.extra.get("url_type")
+            ),
             "captured_at": capture.captured_at.isoformat(timespec="seconds"),
             "status": result.status,
             "title": result.title,

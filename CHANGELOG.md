@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.4.0 — Calidad del modelo de conocimiento (5 de julio de 2026)
+
+Iteración de calidad sin nuevas funcionalidades; cierra la V1.
+
+- **`content_source`** (nuevo, junto a `source`): distingue la **vía de
+  captura** (telegram, cli...) del **origen real del contenido** (twitter,
+  youtube, web, nota-personal, imagen, nota-de-voz, documento, archivo).
+  Determinista — derivado del tipo y la URL — y por tanto siempre
+  regenerable. `source` se conserva intacto (compatibilidad).
+- **`relevance` → `why_relevant`**: responde a "¿por qué este documento
+  debería seguir existiendo dentro de diez años?" — preserva el contexto de
+  la decisión de guardar, no solo el hecho.
+- **`learnings` → `key_ideas`**: concepto más amplio — lo que merece la pena
+  recordar: aprendizajes, inspiración, decisiones, hipótesis o contexto
+  esencial. Valor intelectual, no resumen.
+- **Doble confianza**: `confidence` se divide en `extraction_confidence`
+  (¿el contenido extraído es completo y fiel?) y `classification_confidence`
+  (¿las categorías son correctas?).
+- **Migración automática vía `enrich`**: `ENRICHMENT_VERSION=3` marca todas
+  las notas como obsoletas; un `enrich` las regenera al nuevo esquema sin
+  tocar el contenido original. La sección legible y el índice de búsqueda
+  leen también los nombres antiguos durante la transición.
+
 ## v1.3.0 — La taxonomía aprende de tu uso (5 de julio de 2026)
 
 Detector de temas recurrentes con ciclo de aprobación desde Telegram: la

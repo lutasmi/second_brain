@@ -18,7 +18,7 @@ from second_brain.storage.markdown import ENRICH_END, ENRICH_START
 # Versión del esquema de enriquecimiento. Al incrementarla, `second-brain
 # enrich` detecta como obsoletas las notas enriquecidas con versiones
 # anteriores y las regenera (el contenido original nunca se toca).
-ENRICHMENT_VERSION = 2
+ENRICHMENT_VERSION = 3
 
 _ENTITY_KINDS = ("people", "organizations", "technologies", "products", "places")
 
@@ -42,8 +42,8 @@ _SCHEMA = {
         "suggested_categories": {"type": "array", "items": {"type": "string"}},
         "content_type": {"type": "string", "enum": list(_CONTENT_TYPES)},
         "summary": {"type": "string"},
-        "relevance": {"type": "string"},
-        "learnings": {"type": "array", "items": {"type": "string"}},
+        "why_relevant": {"type": "string"},
+        "key_ideas": {"type": "array", "items": {"type": "string"}},
         "entities": {
             "type": "object",
             "properties": {
@@ -57,21 +57,23 @@ _SCHEMA = {
         "keywords": {"type": "array", "items": {"type": "string"}},
         "related_topics": {"type": "array", "items": {"type": "string"}},
         "language": {"type": "string"},
-        "confidence": {"type": "number"},
+        "extraction_confidence": {"type": "number"},
+        "classification_confidence": {"type": "number"},
     },
     "required": [
         "categories",
         "suggested_categories",
         "content_type",
         "summary",
-        "relevance",
-        "learnings",
+        "why_relevant",
+        "key_ideas",
         "entities",
         "concepts",
         "keywords",
         "related_topics",
         "language",
-        "confidence",
+        "extraction_confidence",
+        "classification_confidence",
     ],
     "additionalProperties": False,
 }
@@ -94,11 +96,14 @@ Devuelve:
   oficial basta — no propongas por proponer.{dismissed_note}
 - content_type: qué es este documento, uno de: {content_types}.
 - summary: resumen fiel del contenido en español, de 1 a 3 frases, sin opinar.
-- relevance: por qué merece estar en una biblioteca personal de conocimiento:
-  qué aporta o para qué podría servir en el futuro (1 o 2 frases). Si hay una
-  "Nota del usuario", esa es la motivación principal: respétala y compleméntala.
-- learnings: de 2 a 5 aprendizajes concretos que se llevan de este contenido
-  (frases cortas y accionables; si el contenido no da para tanto, menos).
+- why_relevant: responde a "¿por qué este documento debería seguir existiendo
+  en esta biblioteca dentro de diez años?" — qué aporta, qué preserva o para
+  qué podría servir (1 o 2 frases). Si hay una "Nota del usuario", esa es la
+  motivación principal: respétala y compleméntala.
+- key_ideas: de 2 a 5 ideas que merece la pena recordar de este contenido.
+  No es un resumen: es lo que aporta valor intelectual, según el caso —
+  aprendizajes, inspiración, decisiones, hipótesis o contexto esencial
+  (frases cortas; si el contenido no da para tanto, menos).
 - entities.people / organizations / technologies / products / places:
   nombres propios mencionados en el documento (listas vacías si no hay).
 - concepts: de 2 a 6 conceptos o ideas clave del documento (minúsculas).
@@ -106,7 +111,10 @@ Devuelve:
 - related_topics: de 2 a 5 temas afines que conectarían este documento con
   otros de la biblioteca (minúsculas).
 - language: código ISO 639-1 del idioma principal del contenido.
-- confidence: tu confianza en la clasificación de categories, de 0 a 1.
+- extraction_confidence: de 0 a 1, cuánto confías en que el contenido que ves
+  está completo y es fiel al original (extracción troceada, OCR ruidoso o
+  transcripción dudosa ⇒ baja).
+- classification_confidence: de 0 a 1, tu confianza en las categories elegidas.
 
 Documento
 =========
@@ -167,12 +175,12 @@ def enrich(title: str, body: str, model: KnowledgeModel, config) -> dict:
     content_type = str(data.get("content_type", "")).strip().lower()
     if content_type in _CONTENT_TYPES:
         enrichment["content_type"] = content_type
-    relevance = str(data.get("relevance", "")).strip()
-    if relevance:
-        enrichment["relevance"] = relevance
-    learnings = _clean_list(data.get("learnings"), 5)
-    if learnings:
-        enrichment["learnings"] = learnings
+    why_relevant = str(data.get("why_relevant", "")).strip()
+    if why_relevant:
+        enrichment["why_relevant"] = why_relevant
+    key_ideas = _clean_list(data.get("key_ideas"), 5)
+    if key_ideas:
+        enrichment["key_ideas"] = key_ideas
     entities = {
         kind: _clean_list((data.get("entities") or {}).get(kind), 10)
         for kind in _ENTITY_KINDS
@@ -188,10 +196,11 @@ def enrich(title: str, body: str, model: KnowledgeModel, config) -> dict:
     language = str(data.get("language", "")).strip().lower()[:5]
     if language:
         enrichment["language"] = language
-    try:
-        enrichment["confidence"] = round(min(1.0, max(0.0, float(data.get("confidence")))), 2)
-    except (TypeError, ValueError):
-        pass
+    for field in ("extraction_confidence", "classification_confidence"):
+        try:
+            enrichment[field] = round(min(1.0, max(0.0, float(data.get(field)))), 2)
+        except (TypeError, ValueError):
+            pass
 
     provider = ai.provider(config)
     enrichment["provider"] = provider
@@ -218,11 +227,13 @@ def render_section(enrichment: dict) -> str:
     parts: list[str] = [ENRICH_START]
     if enrichment.get("summary"):
         parts.append(_callout("abstract", "Resumen", enrichment["summary"]))
-    if enrichment.get("relevance"):
-        parts.append(_callout("quote", "Por qué se guardó", enrichment["relevance"]))
-    if enrichment.get("learnings"):
-        bullets = "\n".join(f"- {item}" for item in enrichment["learnings"])
-        parts.append(_callout("tip", "Aprendizajes", bullets))
+    why = enrichment.get("why_relevant") or enrichment.get("relevance")
+    if why:
+        parts.append(_callout("quote", "Por qué merece quedarse", why))
+    ideas = enrichment.get("key_ideas") or enrichment.get("learnings")
+    if ideas:
+        bullets = "\n".join(f"- {item}" for item in ideas)
+        parts.append(_callout("tip", "Ideas clave", bullets))
     if enrichment.get("suggested_categories"):
         joined = ", ".join(f"`{s}`" for s in enrichment["suggested_categories"])
         parts.append(

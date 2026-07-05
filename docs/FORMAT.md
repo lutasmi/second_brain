@@ -41,7 +41,8 @@ Campos comunes a todas las notas:
 |---------------|--------|---------------------------------------------------------|
 | `id`          | str    | Identificador único y estable de la nota                |
 | `type`        | str    | `text` \| `url` \| `image` \| `audio` \| `pdf` \| `file` (comodín) |
-| `source`      | str    | Fuente de captura: `telegram`, `cli`, ...               |
+| `source`      | str    | **Vía de captura**: por dónde entró (`telegram`, `cli`, ...) |
+| `content_source` | str | **Origen real del contenido**: `twitter` \| `youtube` \| `linkedin` \| `web` \| `nota-personal` \| `imagen` \| `nota-de-voz` \| `documento` \| `archivo`. Determinista (derivado del tipo y la URL), siempre regenerable |
 | `captured_at` | str    | ISO 8601 con zona horaria                               |
 | `status`      | str    | `complete` \| `pending` (extracción pendiente)          |
 | `title`       | str    | Título legible                                          |
@@ -94,9 +95,11 @@ enrichment:
   content_type: articulo          # articulo|video|audio|hilo-social|idea-propia|
                                   # imagen|documento|herramienta|referencia|otro
   summary: Resumen fiel de 1-3 frases.
-  relevance: Por qué se guardó y para qué podría servir en el futuro.
-  learnings:                      # aprendizajes concretos que deja el contenido
-    - los agentes necesitan objetivos verificables
+  why_relevant: Por qué este documento debería seguir existiendo dentro de
+    diez años en la biblioteca.
+  key_ideas:                      # lo que merece la pena recordar; no un
+    - los agentes necesitan objetivos verificables  # resumen: aprendizajes,
+                                  # inspiración, decisiones, hipótesis, contexto
   entities:                       # metadatos abiertos (no taxonomía)
     people: [Sam Altman]
     organizations: [OpenAI]
@@ -107,12 +110,13 @@ enrichment:
   keywords: [llm, orquestación]
   related_topics: [automatización del trabajo]
   language: es
-  confidence: 0.92
+  extraction_confidence: 0.95     # ¿el contenido presente es completo y fiel?
+  classification_confidence: 0.92 # ¿las categorías elegidas son correctas?
   provider: openai                # trazabilidad del enriquecimiento
   model: gpt-5-mini
   enriched_at: '2026-07-05T10:00:00+02:00'
   knowledge_model: 3fa1b2c8       # hash del knowledge_model.md usado
-  version: 2                      # versión del esquema de enriquecimiento
+  version: 3                      # versión del esquema de enriquecimiento
 ```
 
 Además del frontmatter, cada nota enriquecida lleva una **sección legible**

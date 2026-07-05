@@ -1,3 +1,3 @@
 """second_brain — biblioteca documental personal basada en Markdown."""
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
