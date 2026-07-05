@@ -91,7 +91,7 @@ Devuelve:
 - suggested_categories: SOLO si el documento pide a gritos una categoría que
   no existe en la lista oficial, propónla aquí (máximo 2; minúsculas,
   singular, con guiones). No repitas ninguna de la lista. Vacío si la lista
-  oficial basta — no propongas por proponer.
+  oficial basta — no propongas por proponer.{dismissed_note}
 - content_type: qué es este documento, uno de: {content_types}.
 - summary: resumen fiel del contenido en español, de 1 a 3 frases, sin opinar.
 - relevance: por qué merece estar en una biblioteca personal de conocimiento:
@@ -132,12 +132,20 @@ def enrich(title: str, body: str, model: KnowledgeModel, config) -> dict:
     """Enriquece un documento. Devuelve el bloque `enrichment` completo."""
     from second_brain import ai
 
+    dismissed_note = ""
+    if model.dismissed:
+        dismissed_note = (
+            " El usuario ya descartó estas propuestas; NO vuelvas a sugerirlas: "
+            + ", ".join(model.dismissed)
+            + "."
+        )
     prompt = _PROMPT.format(
         categories="\n".join(
             f"- {slug} — {desc}" if desc else f"- {slug}"
             for slug, desc in model.categories
         ),
         content_types=", ".join(_CONTENT_TYPES),
+        dismissed_note=dismissed_note,
         title=title,
         body=body[:8000],
     )
@@ -151,7 +159,9 @@ def enrich(title: str, body: str, model: KnowledgeModel, config) -> dict:
         "summary": str(data.get("summary", "")).strip(),
     }
     suggested = [slugify(s) for s in _clean_list(data.get("suggested_categories"), 2)]
-    suggested = [s for s in suggested if s and s not in official]
+    suggested = [
+        s for s in suggested if s and s not in official and s not in set(model.dismissed)
+    ]
     if suggested:
         enrichment["suggested_categories"] = suggested
     content_type = str(data.get("content_type", "")).strip().lower()

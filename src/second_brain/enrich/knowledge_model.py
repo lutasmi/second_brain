@@ -59,6 +59,7 @@ _CATEGORY_LINE = re.compile(r"^-\s+([a-z0-9][a-z0-9-]*)\s*(?:[—–:]\s*(.*))?$
 @dataclass(frozen=True)
 class KnowledgeModel:
     categories: list[tuple[str, str]]  # (slug, descripción)
+    dismissed: list[str]  # categorías que el usuario decidió NO incorporar
     hash: str  # hash corto del archivo: trazabilidad del enriquecimiento
 
     @property
@@ -79,21 +80,88 @@ def ensure_model(library_dir: Path) -> KnowledgeModel:
 
     raw = path.read_text(encoding="utf-8")
     categories: list[tuple[str, str]] = []
-    in_categories = False
+    dismissed: list[str] = []
+    section = None
     for line in raw.splitlines():
         stripped = line.strip()
         if stripped.startswith("## "):
-            in_categories = "categor" in stripped.lower()
-            continue
-        if not in_categories:
+            lowered = stripped.lower()
+            if "descartad" in lowered:
+                section = "dismissed"
+            elif "categor" in lowered:
+                section = "categories"
+            else:
+                section = None
             continue
         match = _CATEGORY_LINE.match(stripped)
-        if match:
+        if not match:
+            continue
+        if section == "categories":
             categories.append((match.group(1), (match.group(2) or "").strip()))
+        elif section == "dismissed":
+            dismissed.append(match.group(1))
 
     if not categories:
         raise ValueError(
             f"{path} no contiene categorías válidas en la sección '## Categorías'"
         )
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
-    return KnowledgeModel(categories=categories, hash=digest)
+    return KnowledgeModel(categories=categories, dismissed=dismissed, hash=digest)
+
+
+def _valid_slug(slug: str) -> str:
+    import re
+
+    slug = slug.strip().lower().lstrip("#")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,29}", slug):
+        raise ValueError(
+            f"categoría no válida: {slug!r} (usa minúsculas, números y guiones)"
+        )
+    return slug
+
+
+def approve_category(library_dir: Path, slug: str, description: str = "") -> None:
+    """Añade una categoría a la sección oficial del knowledge model."""
+    slug = _valid_slug(slug)
+    model = ensure_model(library_dir)
+    if slug in model.slugs:
+        return
+    path = model_path(library_dir)
+    lines = path.read_text(encoding="utf-8").splitlines()
+
+    section = None
+    last_category_line = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            lowered = stripped.lower()
+            section = "categories" if (
+                "categor" in lowered and "descartad" not in lowered
+            ) else None
+            continue
+        if section == "categories" and _CATEGORY_LINE.match(stripped):
+            last_category_line = i
+    if last_category_line is None:
+        raise ValueError(f"{path} no tiene sección '## Categorías'")
+
+    entry = f"- {slug} — {description}" if description else f"- {slug}"
+    lines.insert(last_category_line + 1, entry)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def dismiss_category(library_dir: Path, slug: str) -> None:
+    """Registra una categoría como descartada (no volverá a proponerse)."""
+    slug = _valid_slug(slug)
+    model = ensure_model(library_dir)
+    if slug in model.dismissed:
+        return
+    path = model_path(library_dir)
+    content = path.read_text(encoding="utf-8").rstrip("\n")
+    if not any("descartad" in l.lower() and l.startswith("## ") for l in content.splitlines()):
+        content += (
+            "\n\n## Descartadas\n\n"
+            "Temas que decidiste no incorporar como categoría (el sistema no\n"
+            "volverá a proponerlos):\n"
+        )
+    content += f"\n- {slug}"
+    path.write_text(content + "\n", encoding="utf-8")

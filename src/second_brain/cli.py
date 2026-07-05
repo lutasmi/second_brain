@@ -108,6 +108,19 @@ def cmd_enrich(args: argparse.Namespace) -> None:
     print(f"\nEnriquecidas: {len(outcomes) - errors} · errores: {errors}")
 
 
+def cmd_suggest(args: argparse.Namespace) -> None:
+    from second_brain.enrich import knowledge_model, suggestions
+
+    config = load_config(args.env)
+    model = knowledge_model.ensure_model(config.library_dir)
+    found = suggestions.aggregate(config.library_dir, model)
+    if not found:
+        print("No hay temas recurrentes sin categoría por ahora.")
+        return
+    for s in found:
+        print(f"💡 {s.slug} — {s.count} notas (p. ej.: {'; '.join(s.titles)})")
+
+
 def cmd_index(args: argparse.Namespace) -> None:
     from second_brain.index import sqlite_index
 
@@ -163,6 +176,10 @@ def main() -> None:
         help="re-enriquece todo, no solo lo obsoleto respecto al knowledge model",
     )
     p_en.set_defaults(func=cmd_enrich)
+
+    sub.add_parser(
+        "suggest", help="temas recurrentes que aún no tienen categoría oficial"
+    ).set_defaults(func=cmd_suggest)
     sub.add_parser("index", help="reconstruye el índice de búsqueda").set_defaults(
         func=cmd_index
     )

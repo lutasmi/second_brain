@@ -76,6 +76,14 @@ Editar el archivo + `second-brain enrich` reclasifica la biblioteca: cada
 nota registra el hash del modelo con que fue enriquecida, así que solo se
 reprocesa lo obsoleto (con `--all` se fuerza todo).
 
+La taxonomía **aprende del uso**: las `suggested_categories` de las notas
+se agregan y, cuando un tema se repite, se propone (`/sugerencias` en
+Telegram, `second-brain suggest` en CLI, y aviso en el parte diario al
+llegar a 3 notas). `/aprobar <categoria>` la incorpora a la sección oficial;
+`/descartar <categoria>` la registra en la sección `## Descartadas` del
+mismo archivo y no vuelve a proponerse (ni por el agregador ni por el
+modelo de IA).
+
 Cada nota completa lleva un bloque `enrichment` en el frontmatter:
 
 ```yaml

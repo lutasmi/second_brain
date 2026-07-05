@@ -35,7 +35,10 @@ Markdown en tu biblioteca:
 El bot es también tu consola: `/buscar` consulta la biblioteca desde el
 móvil, `/estado` muestra la salud del sistema (incluido el espejo en Drive),
 `/reprocess` y `/enrich` reintentan pendientes, y cada noche a las 21:00
-recibes un parte de estado automático.
+recibes un parte de estado automático. La taxonomía aprende de tu uso:
+cuando guardas varias notas de un tema sin categoría oficial, el sistema te
+lo propone (`/sugerencias`) y lo apruebas o descartas con un mensaje
+(`/aprobar`, `/descartar`).
 
 Cada captura se **enriquece automáticamente** con IA: categorías de una
 taxonomía oficial que es un activo del proyecto (`library/knowledge_model.md`,

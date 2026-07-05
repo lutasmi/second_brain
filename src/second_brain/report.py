@@ -68,4 +68,13 @@ def build_report(config: Config) -> str:
         lines.append("→ envía /reprocess para reintentar las pendientes")
     if stats["enrich_errors"]:
         lines.append("→ envía /enrich para reintentar el enriquecimiento")
+    try:
+        from second_brain.enrich import knowledge_model, suggestions
+
+        model = knowledge_model.ensure_model(config.library_dir)
+        hint = suggestions.report_line(config.library_dir, model)
+        if hint:
+            lines.append(hint)
+    except Exception:  # noqa: BLE001 — las sugerencias nunca rompen el parte
+        pass
     return "\n".join(lines)

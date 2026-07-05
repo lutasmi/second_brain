@@ -48,6 +48,9 @@ WELCOME = (
     "Comandos:\n"
     "/buscar <términos> — buscar en la biblioteca\n"
     "/estado — salud del sistema\n"
+    "/sugerencias — temas recurrentes sin categoría\n"
+    "/aprobar <categoria> — añadirla a tu taxonomía\n"
+    "/descartar <categoria> — no volver a proponerla\n"
     "/reprocess — reintentar notas pendientes\n"
     "/enrich — re-enriquecer notas obsoletas"
 )
@@ -55,6 +58,9 @@ WELCOME = (
 COMMANDS = [
     BotCommand("buscar", "Buscar en la biblioteca"),
     BotCommand("estado", "Estado del sistema"),
+    BotCommand("sugerencias", "Temas recurrentes sin categoría"),
+    BotCommand("aprobar", "Añadir categoría a la taxonomía"),
+    BotCommand("descartar", "Descartar una categoría sugerida"),
     BotCommand("reprocess", "Reintentar notas pendientes"),
     BotCommand("enrich", "Re-enriquecer notas obsoletas"),
     BotCommand("start", "Ayuda"),
@@ -335,6 +341,75 @@ class TelegramSource:
             f"🧠 Enriquecidas {len(outcomes) - errors} notas · errores: {errors}"
         )
 
+    async def on_suggestions(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not self._authorized(update):
+            return
+        from second_brain.enrich import knowledge_model, suggestions
+
+        def _collect():
+            model = knowledge_model.ensure_model(self.config.library_dir)
+            return suggestions.aggregate(self.config.library_dir, model)
+
+        found = await asyncio.to_thread(_collect)
+        if not found:
+            await update.effective_message.reply_text(
+                "No hay temas recurrentes sin categoría por ahora. "
+                "Las propuestas aparecen cuando varios contenidos piden lo mismo."
+            )
+            return
+        blocks = [
+            f"• `{s.slug}` — {s.count} notas\n  p. ej.: " + "; ".join(s.titles)
+            for s in found[:8]
+        ]
+        await update.effective_message.reply_text(
+            "💡 Temas recurrentes sin categoría oficial:\n\n"
+            + "\n\n".join(blocks)
+            + "\n\nAñade con /aprobar <categoria> o silencia con /descartar <categoria>."
+        )
+
+    async def on_approve(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._authorized(update):
+            return
+        slug = " ".join(context.args or []).strip()
+        if not slug:
+            await update.effective_message.reply_text("Uso: /aprobar <categoria>")
+            return
+        from second_brain.enrich import knowledge_model
+
+        try:
+            await asyncio.to_thread(
+                knowledge_model.approve_category, self.config.library_dir, slug
+            )
+        except ValueError as exc:
+            await update.effective_message.reply_text(f"⚠️ {exc}")
+            return
+        await update.effective_message.reply_text(
+            f"✅ «{slug}» añadida a tu taxonomía (knowledge_model.md).\n"
+            "Envía /enrich cuando quieras reclasificar la biblioteca con ella."
+        )
+
+    async def on_dismiss(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._authorized(update):
+            return
+        slug = " ".join(context.args or []).strip()
+        if not slug:
+            await update.effective_message.reply_text("Uso: /descartar <categoria>")
+            return
+        from second_brain.enrich import knowledge_model
+
+        try:
+            await asyncio.to_thread(
+                knowledge_model.dismiss_category, self.config.library_dir, slug
+            )
+        except ValueError as exc:
+            await update.effective_message.reply_text(f"⚠️ {exc}")
+            return
+        await update.effective_message.reply_text(
+            f"🔕 «{slug}» descartada: no volverá a proponerse."
+        )
+
     # -- parte diario --------------------------------------------------------
     async def daily_report(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         text = await asyncio.to_thread(report.build_report, self.config)
@@ -360,6 +435,9 @@ def build_application(config: Config) -> Application:
     app.add_handler(CommandHandler("start", source.on_start))
     app.add_handler(CommandHandler("buscar", source.on_search))
     app.add_handler(CommandHandler("estado", source.on_status))
+    app.add_handler(CommandHandler("sugerencias", source.on_suggestions))
+    app.add_handler(CommandHandler("aprobar", source.on_approve))
+    app.add_handler(CommandHandler("descartar", source.on_dismiss))
     app.add_handler(CommandHandler("reprocess", source.on_reprocess))
     app.add_handler(CommandHandler("enrich", source.on_enrich))
     app.add_handler(MessageHandler(filters.PHOTO, source.on_photo))

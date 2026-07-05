@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.3.0 — La taxonomía aprende de tu uso (5 de julio de 2026)
+
+Detector de temas recurrentes con ciclo de aprobación desde Telegram: la
+estructura de conocimiento crece con lo que realmente capturas, pero cada
+cambio pasa por tus manos.
+
+- **Agregación de `suggested_categories`**: cuando un tema propuesto por el
+  enriquecedor se repite en varias notas, se convierte en candidato.
+- **`/sugerencias`** — lista los temas recurrentes sin categoría oficial,
+  con el número de notas y ejemplos.
+- **`/aprobar <categoria>`** — la añade a `knowledge_model.md` desde el
+  móvil (después, `/enrich` reclasifica la biblioteca con ella).
+- **`/descartar <categoria>`** — la registra en la sección `## Descartadas`
+  del knowledge model: el sistema no vuelve a proponerla y el enriquecedor
+  recibe la instrucción de no sugerirla más.
+- **Parte diario**: avisa proactivamente cuando un tema alcanza 3 notas
+  ("💡 Temas recurrentes sin categoría: ... → /sugerencias").
+- CLI equivalente: `second-brain suggest`.
+
 ## v1.2.0 — Nota v2: el conocimiento guardado gana profundidad (5 de julio de 2026)
 
 La nota es el activo central del sistema; esta versión eleva la calidad de
