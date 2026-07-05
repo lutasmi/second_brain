@@ -12,14 +12,38 @@ from __future__ import annotations
 from datetime import datetime
 
 from second_brain.enrich.knowledge_model import KnowledgeModel
+from second_brain.storage.library import slugify
+from second_brain.storage.markdown import ENRICH_END, ENRICH_START
+
+# Versión del esquema de enriquecimiento. Al incrementarla, `second-brain
+# enrich` detecta como obsoletas las notas enriquecidas con versiones
+# anteriores y las regenera (el contenido original nunca se toca).
+ENRICHMENT_VERSION = 2
 
 _ENTITY_KINDS = ("people", "organizations", "technologies", "products", "places")
+
+_CONTENT_TYPES = (
+    "articulo",
+    "video",
+    "audio",
+    "hilo-social",
+    "idea-propia",
+    "imagen",
+    "documento",
+    "herramienta",
+    "referencia",
+    "otro",
+)
 
 _SCHEMA = {
     "type": "object",
     "properties": {
         "categories": {"type": "array", "items": {"type": "string"}},
+        "suggested_categories": {"type": "array", "items": {"type": "string"}},
+        "content_type": {"type": "string", "enum": list(_CONTENT_TYPES)},
         "summary": {"type": "string"},
+        "relevance": {"type": "string"},
+        "learnings": {"type": "array", "items": {"type": "string"}},
         "entities": {
             "type": "object",
             "properties": {
@@ -37,7 +61,11 @@ _SCHEMA = {
     },
     "required": [
         "categories",
+        "suggested_categories",
+        "content_type",
         "summary",
+        "relevance",
+        "learnings",
         "entities",
         "concepts",
         "keywords",
@@ -49,7 +77,9 @@ _SCHEMA = {
 }
 
 _PROMPT = """Eres el sistema de enriquecimiento de una biblioteca documental personal
-pensada para durar décadas. Analiza el documento y genera metadatos fieles.
+pensada para durar décadas. Su dueño captura todo lo que despierta su
+curiosidad; tu trabajo es que cada nota conserve el máximo valor futuro.
+Analiza el documento y genera metadatos fieles.
 
 Categorías oficiales de la biblioteca (elige EXCLUSIVAMENTE de esta lista,
 usando el slug exacto):
@@ -57,8 +87,18 @@ usando el slug exacto):
 
 Devuelve:
 - categories: entre 1 y 4 slugs de la lista oficial que describan la temática
-  (las más específicas primero). Nunca inventes categorías.
+  (las más específicas primero). Nunca inventes categorías aquí.
+- suggested_categories: SOLO si el documento pide a gritos una categoría que
+  no existe en la lista oficial, propónla aquí (máximo 2; minúsculas,
+  singular, con guiones). No repitas ninguna de la lista. Vacío si la lista
+  oficial basta — no propongas por proponer.
+- content_type: qué es este documento, uno de: {content_types}.
 - summary: resumen fiel del contenido en español, de 1 a 3 frases, sin opinar.
+- relevance: por qué merece estar en una biblioteca personal de conocimiento:
+  qué aporta o para qué podría servir en el futuro (1 o 2 frases). Si hay una
+  "Nota del usuario", esa es la motivación principal: respétala y compleméntala.
+- learnings: de 2 a 5 aprendizajes concretos que se llevan de este contenido
+  (frases cortas y accionables; si el contenido no da para tanto, menos).
 - entities.people / organizations / technologies / products / places:
   nombres propios mencionados en el documento (listas vacías si no hay).
 - concepts: de 2 a 6 conceptos o ideas clave del documento (minúsculas).
@@ -97,6 +137,7 @@ def enrich(title: str, body: str, model: KnowledgeModel, config) -> dict:
             f"- {slug} — {desc}" if desc else f"- {slug}"
             for slug, desc in model.categories
         ),
+        content_types=", ".join(_CONTENT_TYPES),
         title=title,
         body=body[:8000],
     )
@@ -109,6 +150,19 @@ def enrich(title: str, body: str, model: KnowledgeModel, config) -> dict:
         "categories": categories[:4],
         "summary": str(data.get("summary", "")).strip(),
     }
+    suggested = [slugify(s) for s in _clean_list(data.get("suggested_categories"), 2)]
+    suggested = [s for s in suggested if s and s not in official]
+    if suggested:
+        enrichment["suggested_categories"] = suggested
+    content_type = str(data.get("content_type", "")).strip().lower()
+    if content_type in _CONTENT_TYPES:
+        enrichment["content_type"] = content_type
+    relevance = str(data.get("relevance", "")).strip()
+    if relevance:
+        enrichment["relevance"] = relevance
+    learnings = _clean_list(data.get("learnings"), 5)
+    if learnings:
+        enrichment["learnings"] = learnings
     entities = {
         kind: _clean_list((data.get("entities") or {}).get(kind), 10)
         for kind in _ENTITY_KINDS
@@ -134,4 +188,36 @@ def enrich(title: str, body: str, model: KnowledgeModel, config) -> dict:
     enrichment["model"] = ai.model_for(config, provider)
     enrichment["enriched_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
     enrichment["knowledge_model"] = model.hash
+    enrichment["version"] = ENRICHMENT_VERSION
     return enrichment
+
+
+def _callout(kind: str, title: str, text: str) -> str:
+    lines = [f"> [!{kind}]- {title}"]
+    lines.extend(f"> {line}" for line in text.splitlines() if line.strip())
+    return "\n".join(lines)
+
+
+def render_section(enrichment: dict) -> str:
+    """Sección legible del enriquecimiento para el cuerpo de la nota.
+
+    Va delimitada por marcadores: es 100 % regenerable y el contenido
+    original de la nota siempre puede recuperarse eliminándola. Usa
+    callouts de Obsidian (en otros visores se leen como citas normales).
+    """
+    parts: list[str] = [ENRICH_START]
+    if enrichment.get("summary"):
+        parts.append(_callout("abstract", "Resumen", enrichment["summary"]))
+    if enrichment.get("relevance"):
+        parts.append(_callout("quote", "Por qué se guardó", enrichment["relevance"]))
+    if enrichment.get("learnings"):
+        bullets = "\n".join(f"- {item}" for item in enrichment["learnings"])
+        parts.append(_callout("tip", "Aprendizajes", bullets))
+    if enrichment.get("suggested_categories"):
+        joined = ", ".join(f"`{s}`" for s in enrichment["suggested_categories"])
+        parts.append(
+            f"_Categorías sugeridas fuera de la taxonomía: {joined} — "
+            "añádelas a `knowledge_model.md` si te encajan._"
+        )
+    parts.append(ENRICH_END)
+    return "\n\n".join(parts)

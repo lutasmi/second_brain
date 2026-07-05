@@ -52,6 +52,21 @@ def _strip_title_heading(body: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _original_content(body: str) -> str:
+    """Contenido original de una nota: sin título ni sección de enriquecimiento."""
+    return markdown.strip_enrichment_section(_strip_title_heading(body)).strip()
+
+
+def _body_with_section(result_body: str, enrichment: dict | None) -> str:
+    """Antepone la sección legible de enriquecimiento al contenido original."""
+    if not enrichment:
+        return result_body
+    from second_brain.enrich import enricher
+
+    section = enricher.render_section(enrichment)
+    return f"{section}\n\n{result_body}" if result_body.strip() else section
+
+
 class Pipeline:
     def __init__(self, config: Config):
         self.config = config
@@ -79,9 +94,8 @@ class Pipeline:
         self._apply_enrichment(result)
         frontmatter = self._frontmatter(note_id, capture, ctx, result)
         self._apply_relations(frontmatter, path)
-        markdown.write_note(
-            path, markdown.render_note(frontmatter, result.title, result.body)
-        )
+        body = _body_with_section(result.body, frontmatter.get("enrichment"))
+        markdown.write_note(path, markdown.render_note(frontmatter, result.title, body))
         self._update_index(path)
         return ProcessOutcome(path=path, status=result.status, title=result.title)
 
@@ -135,8 +149,9 @@ class Pipeline:
             str(frontmatter["id"]), capture, ctx, result
         )
         self._apply_relations(new_frontmatter, path)
+        body = _body_with_section(result.body, new_frontmatter.get("enrichment"))
         markdown.write_note(
-            path, markdown.render_note(new_frontmatter, result.title, result.body)
+            path, markdown.render_note(new_frontmatter, result.title, body)
         )
         self._update_index(path)
         return ProcessOutcome(path=path, status=result.status, title=result.title)
@@ -222,11 +237,15 @@ class Pipeline:
             if not frontmatter.get("id") or frontmatter.get("status") != "complete":
                 continue
             existing = frontmatter.get("enrichment") or {}
-            if not force and existing.get("knowledge_model") == model.hash:
+            up_to_date = (
+                existing.get("knowledge_model") == model.hash
+                and existing.get("version") == enricher.ENRICHMENT_VERSION
+            )
+            if not force and up_to_date:
                 continue
 
             title = str(frontmatter.get("title", ""))
-            content = _strip_title_heading(body)
+            content = _original_content(body)
             try:
                 frontmatter["enrichment"] = enricher.enrich(
                     title, content, model, self.config
@@ -246,7 +265,8 @@ class Pipeline:
                 frontmatter["enrichment_error"] = str(exc)
                 status = "error"
             self._apply_relations(frontmatter, path)
-            markdown.write_note(path, markdown.render_note(frontmatter, title, content))
+            new_body = _body_with_section(content, frontmatter.get("enrichment"))
+            markdown.write_note(path, markdown.render_note(frontmatter, title, new_body))
             self._update_index(path)
             outcomes.append((path, status))
         return outcomes
@@ -308,7 +328,7 @@ class Pipeline:
         if kind in _ATTACHMENT_KINDS:
             text = fm.get("caption")
         elif kind == "text":
-            text = _strip_title_heading(body)
+            text = _original_content(body)
         else:
             text = None
         return Capture(

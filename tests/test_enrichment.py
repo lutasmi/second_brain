@@ -16,6 +16,8 @@ def _fake_enrichment(**overrides):
     base = {
         "categories": ["ia"],
         "summary": "Resumen de prueba.",
+        "relevance": "Conecta con tus intereses en IA.",
+        "learnings": ["aprender siempre"],
         "entities": {"people": ["Ada Lovelace"]},
         "keywords": ["algoritmos"],
         "language": "es",
@@ -24,6 +26,7 @@ def _fake_enrichment(**overrides):
         "model": "gpt-5-mini",
         "enriched_at": "2026-07-05T10:00:00+02:00",
         "knowledge_model": "deadbeef",
+        "version": enricher.ENRICHMENT_VERSION,
     }
     base.update(overrides)
     return base
@@ -68,7 +71,11 @@ def test_enricher_validates_against_official_categories(config, tmp_path, monkey
     def fake_classify(prompt, schema, cfg):
         return {
             "categories": ["ia", "inventada", "SALUD"],  # inventada se descarta
+            "suggested_categories": ["Física Nuclear", "ia", ""],  # ia ya es oficial
+            "content_type": "articulo",
             "summary": "  Un resumen.  ",
+            "relevance": " Te interesa la historia de la ciencia. ",
+            "learnings": ["La perseverancia importa", "la perseverancia importa"],
             "entities": {"people": [" Marie Curie ", "marie curie", ""]},
             "concepts": [],
             "keywords": ["Radio", "física"],
@@ -84,12 +91,17 @@ def test_enricher_validates_against_official_categories(config, tmp_path, monkey
     result = enricher.enrich("Título", "Cuerpo", model, config)
 
     assert result["categories"] == ["ia", "salud"]
+    assert result["suggested_categories"] == ["fisica-nuclear"]  # slug + sin oficiales
+    assert result["content_type"] == "articulo"
     assert result["summary"] == "Un resumen."
+    assert result["relevance"] == "Te interesa la historia de la ciencia."
+    assert result["learnings"] == ["La perseverancia importa"]  # dedup
     assert result["entities"]["people"] == ["Marie Curie"]  # dedup + limpieza
     assert "concepts" not in result  # las listas vacías no ensucian la nota
     assert result["confidence"] == 1.0
     assert result["language"] == "es"
     assert result["knowledge_model"] == model.hash
+    assert result["version"] == enricher.ENRICHMENT_VERSION
     assert result["provider"] == "openai"
 
 
@@ -168,9 +180,23 @@ def test_enrich_library_preserves_original_content(config, monkeypatch):
     assert [s for _, s in results] == ["enriched"]
 
     frontmatter, body_after = markdown.parse_note(outcome.path)
-    assert body_after == body_before  # inmutabilidad del contenido original
+    # inmutabilidad: el contenido original se recupera exacto quitando la sección
+    from second_brain.pipeline import _original_content
+
+    assert _original_content(body_after) == _original_content(body_before)
+    assert "Con un segundo párrafo que no debe cambiar." in body_after
+    # la sección legible está presente y delimitada
+    assert markdown.ENRICH_START in body_after and markdown.ENRICH_END in body_after
+    assert "Por qué se guardó" in body_after
     assert frontmatter["enrichment"]["categories"] == ["idea-propia"]
     assert frontmatter["tags"] == ["idea-propia"]
+
+    # regenerar otra vez no duplica la sección (idempotente)
+    results = pipeline.enrich_library(force=True)
+    assert [s for _, s in results] == ["enriched"]
+    _, body_again = markdown.parse_note(outcome.path)
+    assert body_again.count(markdown.ENRICH_START) == 1
+    assert _original_content(body_again) == _original_content(body_before)
 
 
 def test_enrich_library_only_reprocesses_stale_notes(config, monkeypatch):
@@ -198,6 +224,46 @@ def test_enrich_library_only_reprocesses_stale_notes(config, monkeypatch):
     assert [s for _, s in results] == ["enriched"]
     # --all fuerza aunque esté al día
     assert [s for _, s in pipeline.enrich_library(force=True)] == ["enriched"]
+
+
+def test_enrichment_version_bump_marks_notes_stale(config, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    model = km.ensure_model(config.library_dir)
+    monkeypatch.setattr(
+        enricher,
+        "enrich",
+        lambda t, b, m, c: _fake_enrichment(knowledge_model=m.hash),
+    )
+    pipeline = Pipeline(replace(config, ai_enrich=True))
+    pipeline.process(
+        Capture(kind="text", source="cli", captured_at=_now(), text="nota versionada")
+    )
+    assert pipeline.enrich_library() == []  # al día
+
+    # una versión vieja del enriquecedor deja la nota obsoleta
+    monkeypatch.setattr(
+        enricher,
+        "enrich",
+        lambda t, b, m, c: _fake_enrichment(knowledge_model=m.hash, version=1),
+    )
+    pipeline.enrich_library(force=True)
+    monkeypatch.setattr(
+        enricher,
+        "enrich",
+        lambda t, b, m, c: _fake_enrichment(knowledge_model=m.hash),
+    )
+    assert [s for _, s in pipeline.enrich_library()] == ["enriched"]
+
+
+def test_render_section_and_strip_roundtrip():
+    section = enricher.render_section(_fake_enrichment(suggested_categories=["nueva"]))
+    assert section.startswith(markdown.ENRICH_START)
+    assert section.endswith(markdown.ENRICH_END)
+    assert "Resumen" in section and "Aprendizajes" in section and "nueva" in section
+
+    original = "Contenido original\n\ncon dos párrafos."
+    body = f"{section}\n\n{original}"
+    assert markdown.strip_enrichment_section(body).strip() == original
 
 
 def test_enrich_library_without_key_raises(config):

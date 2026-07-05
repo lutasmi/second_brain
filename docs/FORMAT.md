@@ -81,7 +81,14 @@ Cada nota completa lleva un bloque `enrichment` en el frontmatter:
 ```yaml
 enrichment:
   categories: [ia, producto]      # SOLO de la taxonomía oficial → tags
+  suggested_categories: [robotica] # propuestas FUERA de la taxonomía: tu cola
+                                  # de revisión para hacer crecer knowledge_model.md
+  content_type: articulo          # articulo|video|audio|hilo-social|idea-propia|
+                                  # imagen|documento|herramienta|referencia|otro
   summary: Resumen fiel de 1-3 frases.
+  relevance: Por qué se guardó y para qué podría servir en el futuro.
+  learnings:                      # aprendizajes concretos que deja el contenido
+    - los agentes necesitan objetivos verificables
   entities:                       # metadatos abiertos (no taxonomía)
     people: [Sam Altman]
     organizations: [OpenAI]
@@ -97,7 +104,15 @@ enrichment:
   model: gpt-5-mini
   enriched_at: '2026-07-05T10:00:00+02:00'
   knowledge_model: 3fa1b2c8       # hash del knowledge_model.md usado
+  version: 2                      # versión del esquema de enriquecimiento
 ```
+
+Además del frontmatter, cada nota enriquecida lleva una **sección legible**
+al principio del cuerpo, delimitada por los marcadores
+`<!-- enriquecimiento:inicio -->` / `<!-- enriquecimiento:fin -->`:
+resumen, por qué se guardó y aprendizajes, en callouts de Obsidian (en
+cualquier otro visor se leen como citas). La sección es 100 % regenerable;
+eliminar el bloque devuelve el contenido original exacto.
 
 **Inmutabilidad**: el enriquecimiento vive solo en el frontmatter; el cuerpo
 de la nota es siempre el contenido original capturado, intacto y

@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.2.0 — Nota v2: el conocimiento guardado gana profundidad (5 de julio de 2026)
+
+La nota es el activo central del sistema; esta versión eleva la calidad de
+lo que se guarda con cada captura.
+
+### Nuevos metadatos de enriquecimiento (frontmatter)
+- `relevance` — **por qué se guardó**: qué aporta y para qué podría servir
+  (si hay nota del usuario, se respeta como motivación principal).
+- `learnings` — aprendizajes concretos y accionables del contenido.
+- `suggested_categories` — categorías que el modelo propondría FUERA de la
+  taxonomía oficial. Nunca se usan como etiquetas: son la cola de revisión
+  del usuario para hacer crecer `knowledge_model.md` con control.
+- `content_type` — tipo de documento (artículo, vídeo, idea propia,
+  herramienta...).
+- `version` — versión del esquema de enriquecimiento: al mejorarlo,
+  `second-brain enrich` regenera automáticamente las notas antiguas.
+
+### Sección legible en la nota
+Cada nota enriquecida muestra al inicio del cuerpo un bloque delimitado por
+marcadores (`<!-- enriquecimiento:inicio/fin -->`) con resumen, motivo y
+aprendizajes en callouts de Obsidian. El contenido original permanece
+inmutable y recuperable byte a byte eliminando el bloque; la sección se
+regenera entera en cada re-enriquecimiento (idempotente, con tests).
+
+### Búsqueda
+El índice cubre los nuevos campos: encontrarás notas por sus aprendizajes,
+su motivo de guardado o su tipo de contenido.
+
 ## v1.1.0 — Nuevas capturas, operación desde Telegram y relaciones (5 de julio de 2026)
 
 ### Nuevos tipos de captura

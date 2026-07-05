@@ -7,9 +7,26 @@ El formato está documentado en docs/FORMAT.md. La escritura es atómica
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import yaml
+
+# Delimitan la sección de enriquecimiento visible dentro del cuerpo.
+# Todo lo que hay entre ellos es regenerable; el contenido original de la
+# nota es SIEMPRE recuperable eliminando el bloque.
+ENRICH_START = "<!-- enriquecimiento:inicio -->"
+ENRICH_END = "<!-- enriquecimiento:fin -->"
+
+_ENRICH_BLOCK = re.compile(
+    re.escape(ENRICH_START) + r".*?" + re.escape(ENRICH_END) + r"\n*",
+    re.DOTALL,
+)
+
+
+def strip_enrichment_section(body: str) -> str:
+    """Elimina la sección de enriquecimiento, devolviendo el resto intacto."""
+    return _ENRICH_BLOCK.sub("", body).lstrip("\n")
 
 
 def render_note(frontmatter: dict, title: str, body: str) -> str:

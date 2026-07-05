@@ -23,8 +23,12 @@ def db_path(library_dir: Path) -> Path:
 
 def _enrichment_text(enrichment: dict) -> str:
     """Aplana el bloque de enriquecimiento para indexarlo como texto."""
-    parts: list[str] = [str(enrichment.get("summary", ""))]
-    for field in ("concepts", "keywords", "related_topics"):
+    parts: list[str] = [
+        str(enrichment.get("summary", "")),
+        str(enrichment.get("relevance", "")),
+        str(enrichment.get("content_type", "")),
+    ]
+    for field in ("learnings", "suggested_categories", "concepts", "keywords", "related_topics"):
         parts.extend(enrichment.get(field) or [])
     for values in (enrichment.get("entities") or {}).values():
         parts.extend(values or [])
